@@ -21,9 +21,9 @@ try:
 except:
     # Yerelde test ederken buraya kendi bilgilerinizi geçici yazabilirsiniz
     # AMA GITHUB'A YÜKLERKEN BOŞ BIRAKIN VEYA SECRETS KULLANIN
-    GONDEREN_EMAIL = "kavakkoru@gmail.com"
-    ALICI_EMAIL = "ltbaspotter@gmail.com"
-    EP_SIFRE = "hlld qsor zpft ccua"
+    GONDEREN_EMAIL = "ornek@gmail.com"
+    ALICI_EMAIL = "doktor@gmail.com"
+    EP_SIFRE = "uygulama_sifresi"
 
 DB_FILE = "tansiyon_verileri.csv"
 
@@ -96,3 +96,17 @@ if not df.empty:
     
     with col1:
         if st.button("📧 Raporu Mail At"):
+            with st.spinner("Gönderiliyor..."):
+                if mail_gonder(DB_FILE):
+                    st.success("Mail başarıyla gönderildi!")
+    
+    with col2:
+        # Manuel yedek alma butonu
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("📥 Excel Olarak İndir", data=csv, file_name="tansiyon_yedek.csv", mime="text/csv")
+
+    # Liste
+    st.subheader("📋 Geçmiş Kayıtlar")
+    st.dataframe(df.sort_values(by="Tarih", ascending=False), use_container_width=True)
+else:
+    st.info("Henüz veri bulunmuyor. Sol menüden ilk kaydınızı girebilirsiniz.")
