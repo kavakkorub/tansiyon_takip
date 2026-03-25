@@ -7,6 +7,7 @@ import os
 # --- KONFİGÜRASYON ---
 st.set_page_config(page_title="Tansiyon Takip", layout="centered", page_icon="🩺")
 
+# Dosya adı (Verilerin saklandığı yer)
 DB_FILE = "tansiyon_verileri.csv"
 
 def verileri_yukle():
@@ -20,18 +21,29 @@ st.title("🩺 Tansiyon Takip Sistemi")
 # 1. YENİ KAYIT EKLEME
 with st.container(border=True):
     st.subheader("➕ Yeni Ölçüm")
+    
+    # Tarih ve Vakit seçimi geri geldi
+    col_tarih, col_vakit = st.columns(2)
+    with col_tarih: 
+        tarih_giris = st.date_input("Tarih Seçin", datetime.now())
+    with col_vakit: 
+        vakit_giris = st.selectbox("Vakit", ["Sabah", "Akşam"])
+    
     c1, c2 = st.columns(2)
     with c1: sistolik = st.number_input("Büyük", 7, 22, 12)
     with c2: diyastolik = st.number_input("Küçük", 4, 14, 8)
     
     if st.button("KAYDET", use_container_width=True, type="primary"):
-        zaman = datetime.now().strftime("%Y-%m-%d %H:%M")
-        vakit = "Sabah" if datetime.now().hour < 12 else "Akşam"
-        yeni_veri = pd.DataFrame([[zaman, vakit, sistolik, diyastolik]], 
+        # Seçilen tarih ve o anki saati birleştiriyoruz
+        zaman_obj = datetime.combine(tarih_giris, datetime.now().time())
+        zaman_str = zaman_obj.strftime("%Y-%m-%d %H:%M")
+        
+        yeni_veri = pd.DataFrame([[zaman_str, vakit_giris, sistolik, diyastolik]], 
                                  columns=["Tarih", "Vakit", "Sistolik", "Diyastolik"])
+        
         df_mevcut = verileri_yukle()
         pd.concat([df_mevcut, yeni_veri], ignore_index=True).to_csv(DB_FILE, index=False)
-        st.success("Kaydedildi!")
+        st.success(f"Kaydedildi: {sistolik}/{diyastolik}")
         st.rerun()
 
 # 2. VERİ LİSTESİ VE DÜZENLEME
@@ -40,45 +52,54 @@ df = verileri_yukle()
 if not df.empty:
     st.divider()
     st.subheader("📋 Kayıt Yönetimi")
-    st.info("💡 Tablodaki rakamların üzerine çift tıklayarak değerleri değiştirebilirsiniz.")
+    st.info("💡 Değerleri hücrelere tıklayarak düzeltebilir, satırları seçip 'Delete' ile silebilirsiniz.")
     
     if "editor_key" not in st.session_state:
         st.session_state.editor_key = 0
 
-    # DÜZENLENEBİLİR TABLO
+    # Düzenlenebilir Tablo
     edited_df = st.data_editor(
         df, 
         use_container_width=True, 
-        num_rows="dynamic", # Satır silmeye izin verir
+        num_rows="dynamic",
         key=f"ed_{st.session_state.editor_key}",
         column_config={
-            "Tarih": st.column_config.TextColumn("Tarih", disabled=True), # Değiştirilemez
-            "Vakit": st.column_config.TextColumn("Vakit", disabled=True), # Değiştirilemez
-            "Sistolik": st.column_config.NumberColumn("Büyük", min_value=7, max_value=22, required=True),
-            "Diyastolik": st.column_config.NumberColumn("Küçük", min_value=4, max_value=14, required=True),
+            "Tarih": st.column_config.TextColumn("Tarih", disabled=False), # İstersen tarihi de elle düzeltebilirsin
+            "Vakit": st.column_config.SelectboxColumn("Vakit", options=["Sabah", "Akşam"]),
+            "Sistolik": st.column_config.NumberColumn("Büyük", min_value=7, max_value=22),
+            "Diyastolik": st.column_config.NumberColumn("Küçük", min_value=4, max_value=14),
         }
     )
 
-    # Değişiklik Kontrolü (Hem silme hem de değer düzeltme için)
-    # pandas.equals() kullanarak tablodaki herhangi bir hücre değişti mi diye bakıyoruz
+    # Herhangi bir değişiklik (silme veya düzeltme) kontrolü
     if not edited_df.equals(df):
-        st.warning("⚠️ Tabloda değişiklik yaptınız (değer düzeltme veya silme).")
-        
+        st.warning("⚠️ Değişiklikleri onaylıyor musunuz?")
         c1, c2 = st.columns(2)
         with c1:
-            if st.button("✅ Değişiklikleri Kaydet", type="primary", use_container_width=True):
+            if st.button("✅ Kaydet", type="primary", use_container_width=True):
                 edited_df.to_csv(DB_FILE, index=False)
-                st.success("Güncellendi!")
                 st.rerun()
         with c2:
-            if st.button("❌ İptal Et / Geri Al", use_container_width=True):
+            if st.button("❌ İptal", use_container_width=True):
                 st.session_state.editor_key += 1
                 st.rerun()
 
-    # 3. ANALİZ GRAFİĞİ (En altta)
+    # 3. ANALİZ VE YEDEKLEME
     st.divider()
-    st.subheader("📈 Analiz")
+    st.subheader("📈 Analiz ve Yedekleme")
+    
+    # Grafik
     fig = px.line(df, x="Tarih", y=["Sistolik", "Diyastolik"], markers=True)
     st.plotly_chart(fig, use_container_width=True)
+    
+    # Veri Kaybını Önlemek İçin İndirme Butonu
+    csv_dosya = df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Verileri Bilgisayara Yedekle (CSV)",
+        data=csv_dosya,
+        file_name=f"tansiyon_yedek_{datetime.now().strftime('%Y%m%d')}.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
 else:
-    st.info("Henüz veri yok.")
+    st.info("Henüz kayıt bulunamadı.")
