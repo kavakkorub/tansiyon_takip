@@ -1,8 +1,4 @@
-import streamlit_authenticator as stauth
-# Sadece bir kereye mahsus şifre kodu üretmek için:
-print("Şifre Kodunuz:", stauth.Hasher(['12345']).generate())
 import streamlit as st
-import streamlit_authenticator as stauth
 import pandas as pd
 from datetime import datetime
 import plotly.express as px
@@ -13,164 +9,118 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 
-# --- 1. GÜVENLİ KULLANICI DOĞRULAMA ---
-try:
-    # Secrets'tan gelen veriyi saf bir sözlüğe (dict) dönüştürüyoruz
-    creds = {
-        "usernames": {
-            k: {"name": v["name"], "password": v["password"]} 
-            for k, v in st.secrets["credentials"]["usernames"].items()
-        }
-    }
+# --- KONFİGÜRASYON ---
+st.set_page_config(page_title="Tansiyon Takip", layout="centered", page_icon="🩺")
 
-    authenticator = stauth.Authenticate(
-        creds,
-        st.secrets["auth"]["cookie_name"],
-        st.secrets["auth"]["key"],
-        cookie_expiry_days=int(st.secrets["auth"]["expiry_days"])
-    )
-except Exception as e:
-    st.error(f"Giriş Sistemi Hatası: {e}")
-    st.stop()
+# Veritabanı Dosyası (Tek dosya, şifresiz)
+DB_FILE = "tansiyon_verileri.csv"
 
-# Giriş kutusunu göster
-authenticator.login(location='main')
+# Fonksiyonlar
+def verileri_yukle():
+    if os.path.exists(DB_FILE):
+        return pd.read_csv(DB_FILE)
+    return pd.DataFrame(columns=["Tarih", "Vakit", "Sistolik", "Diyastolik", "Nabiz"])
 
-# --- 2. GİRİŞ KONTROLÜ VE UYGULAMA AKIŞI ---
-if st.session_state["authentication_status"] == False:
-    st.error("Kullanıcı adı veya şifre hatalı!")
-elif st.session_state["authentication_status"] == None:
-    st.warning("Lütfen kullanıcı adı ve şifrenizle giriş yapın.")
-elif st.session_state["authentication_status"]:
+def mail_gonder(dosya_yolu):
+    try:
+        email_konf = st.secrets.get("email_ayarlari", {})
+        msg = MIMEMultipart()
+        msg['From'] = email_konf.get("gonderen", "")
+        msg['To'] = email_konf.get("alici", "")
+        msg['Subject'] = f"Tansiyon Raporu - {datetime.now().strftime('%d/%m/%Y')}"
+        body = "Güncel tansiyon kayıtları ektedir."
+        msg.attach(MIMEText(body, 'plain'))
+        with open(dosya_yolu, "rb") as attachment:
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(attachment.read())
+            encoders.encode_base64(part)
+            part.add_header('Content-Disposition', f"attachment; filename= {dosya_yolu}")
+            msg.attach(part)
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(email_konf.get("gonderen", ""), email_konf.get("sifre", ""))
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        st.error(f"E-posta Hatası: {e}")
+        return False
+
+# --- ANA ARAYÜZ ---
+st.title("🩺 Tansiyon Takip Sistemi")
+
+# 1. YENİ KAYIT EKLEME
+with st.container(border=True):
+    st.subheader("➕ Yeni Ölçüm Ekle")
+    col1, col2 = st.columns(2)
+    with col1: tarih_giris = st.date_input("Tarih", datetime.now())
+    with col2: vakit_giris = st.selectbox("Vakit", ["Sabah", "Akşam"])
     
-    # Kullanıcı bilgilerini alalım
-    name = st.session_state["name"]
-    username = st.session_state["username"]
+    c1, c2, c3 = st.columns(3)
+    with c1: sistolik = st.number_input("Büyük (Sistolik)", 70, 220, 120)
+    with c2: diyastolik = st.number_input("Küçük (Diyastolik)", 40, 140, 80)
+    with c3: nabiz = st.number_input("Nabız", 40, 200, 70)
+    
+    if st.button("KAYDET", use_container_width=True, type="primary"):
+        zaman = datetime.combine(tarih_giris, datetime.now().time()).strftime("%Y-%m-%d %H:%M")
+        yeni_veri = pd.DataFrame([[zaman, vakit_giris, sistolik, diyastolik, nabiz]], 
+                                 columns=["Tarih", "Vakit", "Sistolik", "Diyastolik", "Nabiz"])
+        df_mevcut = verileri_yukle()
+        pd.concat([df_mevcut, yeni_veri], ignore_index=True).to_csv(DB_FILE, index=False)
+        st.success("Başarıyla kaydedildi!")
+        st.rerun()
 
-    # Çıkış butonunu yan menüye koyalım
-    with st.sidebar:
-        st.write(f"Hoş geldin, **{name}**")
-        authenticator.logout("Çıkış Yap", "sidebar")
+# 2. VERİ ANALİZİ VE LİSTELEME
+df = verileri_yukle()
 
-    # HER KULLANICI İÇİN AYRI DOSYA
-    DB_FILE = f"tansiyon_{username}.csv"
+if not df.empty:
+    st.divider()
+    st.subheader("📈 Değişim Grafiği")
+    fig = px.line(df, x="Tarih", y=["Sistolik", "Diyastolik"], 
+                  markers=True, color_discrete_sequence=["#FF4B4B", "#0068C9"])
+    st.plotly_chart(fig, use_container_width=True)
 
-    # --- FONKSİYONLAR ---
-    def verileri_yukle():
-        if os.path.exists(DB_FILE):
-            return pd.read_csv(DB_FILE)
-        return pd.DataFrame(columns=["Tarih", "Vakit", "Sistolik", "Diyastolik", "Nabiz"])
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("📧 Raporu Mail At", use_container_width=True):
+            with st.spinner("Gönderiliyor..."):
+                if mail_gonder(DB_FILE): st.success("Mail gönderildi!")
+    with col_b:
+        st.download_button("📥 Excel İndir", data=df.to_csv(index=False).encode('utf-8'), 
+                           file_name="tansiyon_yedek.csv", use_container_width=True)
 
-    def mail_gonder(dosya_yolu):
-        try:
-            # Secrets'tan mail bilgilerini al (Eğer ayarlı değilse boş döner)
-            GONDEREN = st.secrets.get("email_ayarlari", {}).get("gonderen", "")
-            ALICI = st.secrets.get("email_ayarlari", {}).get("alici", "")
-            SIFRE = st.secrets.get("email_ayarlari", {}).get("sifre", "")
-            
-            msg = MIMEMultipart()
-            msg['From'] = GONDEREN
-            msg['To'] = ALICI
-            msg['Subject'] = f"Tansiyon Raporu ({name}) - {datetime.now().strftime('%d/%m/%Y')}"
-            body = f"Sayın ilgili,\n\n{name} kullanıcısına ait güncel tansiyon kayıtları ektedir."
-            msg.attach(MIMEText(body, 'plain'))
-            with open(dosya_yolu, "rb") as attachment:
-                part = MIMEBase('application', 'octet-stream')
-                part.set_payload(attachment.read())
-                encoders.encode_base64(part)
-                part.add_header('Content-Disposition', f"attachment; filename= {dosya_yolu}")
-                msg.attach(part)
-            server = smtplib.SMTP('smtp.gmail.com', 587)
-            server.starttls()
-            server.login(GONDEREN, SIFRE)
-            server.send_message(msg)
-            server.quit()
-            return True
-        except Exception as e:
-            st.error(f"E-posta gönderilemedi: {e}")
-            return False
+    st.divider()
+    
+    # 3. KAYIT YÖNETİMİ (Kutucuklu Silme & Onay)
+    st.subheader("📋 Kayıt Yönetimi")
+    
+    if "editor_key" not in st.session_state:
+        st.session_state.editor_key = 0
 
-    # --- ANA ARAYÜZ ---
-    st.title(f"🩺 {name} - Tansiyon Takip")
+    edited_df = st.data_editor(
+        df, 
+        use_container_width=True, 
+        num_rows="dynamic",
+        key=f"ed_{st.session_state.editor_key}",
+        column_config={
+            "Tarih": st.column_config.TextColumn("Tarih", disabled=True),
+            "Vakit": st.column_config.TextColumn("Vakit", disabled=True),
+        }
+    )
 
-    # 1. VERİ GİRİŞ BÖLÜMÜ
-    with st.container(border=True):
-        st.subheader("➕ Yeni Ölçüm Ekle")
-        col1, col2 = st.columns(2)
-        with col1: tarih_giris = st.date_input("Tarih", datetime.now())
-        with col2: vakit_giris = st.selectbox("Vakit", ["Sabah", "Akşam"])
+    # Eğer satır silindiyse onay iste
+    if len(edited_df) != len(df):
+        st.warning("⚠️ Bazı kayıtları sildiniz. Kalıcı olarak kaydetmek istiyor musunuz?")
         
-        c1, c2, c3 = st.columns(3)
-        with c1: sistolik = st.number_input("Büyük", 70, 220, 120)
-        with c2: diyastolik = st.number_input("Küçük", 40, 140, 80)
-        with c3: nabiz = st.number_input("Nabız", 40, 200, 70)
-        
-        if st.button("KAYDET", use_container_width=True, type="primary"):
-            zaman_damgasi = datetime.combine(tarih_giris, datetime.now().time()).strftime("%Y-%m-%d %H:%M")
-            yeni_veri = pd.DataFrame([[zaman_damgasi, vakit_giris, sistolik, diyastolik, nabiz]], 
-                                     columns=["Tarih", "Vakit", "Sistolik", "Diyastolik", "Nabiz"])
-            df_mevcut = verileri_yukle()
-            df_yeni = pd.concat([df_mevcut, yeni_veri], ignore_index=True)
-            df_yeni.to_csv(DB_FILE, index=False)
-            st.success("Başarıyla kaydedildi!")
-            st.rerun()
-
-    # 2. ANALİZ VE LİSTELEME
-    df = verileri_yukle()
-
-    if not df.empty:
-        st.divider()
-        st.subheader("📈 Değişim Grafiği")
-        try:
-            fig = px.line(df, x="Tarih", y=["Sistolik", "Diyastolik"], 
-                          labels={"value": "Değer", "variable": "Ölçüm"},
-                          markers=True, color_discrete_sequence=["#FF4B4B", "#0068C9"])
-            st.plotly_chart(fig, use_container_width=True)
-        except:
-            st.info("Grafik yükleniyor...")
-
-        # İşlem Butonları
-        col_a, col_b = st.columns(2)
-        with col_a:
-            if st.button("📧 Raporu Mail At", use_container_width=True):
-                with st.spinner("Gönderiliyor..."):
-                    if mail_gonder(DB_FILE): st.success("Mail iletildi!")
-        with col_b:
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("📥 Excel İndir", data=csv, file_name=f"tansiyon_{username}.csv", use_container_width=True)
-
-        st.divider()
-
-        # 3. ONAY MEKANİZMALI TABLO ALANI
-        st.subheader("📋 Kayıt Yönetimi")
-        
-        if "editor_key" not in st.session_state:
-            st.session_state.editor_key = 0
-
-        edited_df = st.data_editor(
-            df, 
-            use_container_width=True, 
-            num_rows="dynamic",
-            key=f"editor_{st.session_state.editor_key}",
-            column_config={
-                "Tarih": st.column_config.TextColumn("Tarih", disabled=True),
-                "Vakit": st.column_config.TextColumn("Vakit", disabled=True),
-            }
-        )
-
-        # Silme/Düzenleme Kontrolü
-        if len(edited_df) != len(df):
-            st.warning("⚠️ Satır sildiniz. Bu işlemi kalıcı hale getirmek istiyor musunuz?")
-            
-            c_onay1, c_onay2 = st.columns(2)
-            with c_onay1:
-                if st.button("✅ Evet, Kaydet", type="primary", use_container_width=True):
-                    edited_df.to_csv(DB_FILE, index=False)
-                    st.success("Değişiklikler kaydedildi!")
-                    st.rerun()
-            with c_onay2:
-                if st.button("❌ Hayır, Geri Al", type="secondary", use_container_width=True):
-                    st.session_state.editor_key += 1
-                    st.rerun()
-    else:
-        st.info("Henüz veri girişi yapılmamış.")
+        c_onay1, c_onay2 = st.columns(2)
+        with c_onay1:
+            if st.button("✅ Evet, Sil", type="primary", use_container_width=True):
+                edited_df.to_csv(DB_FILE, index=False)
+                st.success("Değişiklikler kaydedildi!")
+                st.rerun()
+        with c_onay2:
+            if st.button("❌ Hayır, Geri Al", type="secondary", use_container_width=True):
+                st.session_state.editor_key += 1
+                st.rerun()
+else:
+    st.info("Henüz veri girişi yapılmamış. İlk ölçümünüzü yukarıdan ekleyebilirsiniz.")
