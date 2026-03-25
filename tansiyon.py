@@ -12,7 +12,7 @@ from email import encoders
 # --- KONFİGÜRASYON ---
 st.set_page_config(page_title="Tansiyon Takip", layout="centered", page_icon="🩺")
 
-# Email Bilgileri (Streamlit Secrets'tan alıyor)
+# Email Bilgileri
 try:
     GONDEREN_EMAIL = st.secrets["email_ayarlari"]["gonderen"]
     ALICI_EMAIL = st.secrets["email_ayarlari"]["alici"]
@@ -23,6 +23,11 @@ except:
     EP_SIFRE = ""
 
 DB_FILE = "tansiyon_verileri.csv"
+
+def verileri_yukle():
+    if os.path.exists(DB_FILE):
+        return pd.read_csv(DB_FILE)
+    return pd.DataFrame(columns=["Tarih", "Vakit", "Sistolik", "Diyastolik", "Nabiz"])
 
 def mail_gonder(dosya_yolu):
     try:
@@ -47,11 +52,6 @@ def mail_gonder(dosya_yolu):
     except Exception as e:
         st.error(f"E-posta Hatası: {e}")
         return False
-
-def verileri_yukle():
-    if os.path.exists(DB_FILE):
-        return pd.read_csv(DB_FILE)
-    return pd.DataFrame(columns=["Tarih", "Vakit", "Sistolik", "Diyastolik", "Nabiz"])
 
 # --- ANA ARAYÜZ ---
 st.title("🩺 Tansiyon Takip Sistemi")
@@ -92,10 +92,10 @@ if not df.empty:
                       markers=True, color_discrete_sequence=["#FF4B4B", "#0068C9"])
         st.plotly_chart(fig, use_container_width=True)
     except:
-        st.info("Grafik hazırlanıyor...")
+        st.info("Grafik güncelleniyor...")
 
     # İşlem Butonları
-    col_a, col_b = st.columns(2)
+    col_a, col_b, col_c = st.columns(3)
     with col_a:
         if st.button("📧 Raporu Mail At", use_container_width=True):
             with st.spinner("Gönderiliyor..."):
@@ -103,6 +103,13 @@ if not df.empty:
     with col_b:
         csv = df.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Excel İndir", data=csv, file_name="tansiyon_yedek.csv", use_container_width=True)
+    with col_c:
+        # SİLME BUTONU
+        if st.button("🗑️ Son Kaydı Sil", use_container_width=True, help="En son eklenen satırı siler"):
+            df = df[:-1] # Son satırı çıkar
+            df.to_csv(DB_FILE, index=False)
+            st.warning("Son kayıt silindi!")
+            st.rerun()
 
     # Geçmiş Tablo
     st.subheader("📋 Geçmiş Ölçümler")
