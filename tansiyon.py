@@ -109,31 +109,36 @@ if not df.empty:
     # 3. ONAY MEKANİZMALI TABLO ALANI
     st.subheader("📋 Kayıt Yönetimi")
     
-    # Düzenlenebilir tabloyu gösteriyoruz
-    # num_rows="dynamic" ile satır seçip silmeye izin veriyoruz
+    # Düzenleme durumunu kontrol etmek için key ekliyoruz
+    # Eğer iptal butonuna basılırsa bu key değişecek ve tablo sıfırlanacak
+    if "editor_key" not in st.session_state:
+        st.session_state.editor_key = 0
+
     edited_df = st.data_editor(
         df, 
         use_container_width=True, 
         num_rows="dynamic",
+        key=f"editor_{st.session_state.editor_key}",
         column_config={
             "Tarih": st.column_config.TextColumn("Tarih", disabled=True),
             "Vakit": st.column_config.TextColumn("Vakit", disabled=True),
         }
     )
 
-    # Eğer tablodaki veri değiştiyse (satır silindiyse) onay iste
+    # Eğer tablodaki veri değiştiyse onay iste
     if len(edited_df) != len(df):
-        st.warning("⚠️ Bir veya daha fazla satır sildiniz. Değişiklikleri kalıcı olarak kaydetmek istiyor musunuz?")
+        st.warning("⚠️ Satır sildiniz. Değişiklikleri kaydetmek istiyor musunuz?")
         
         col_onay1, col_onay2 = st.columns(2)
         with col_onay1:
-            if st.button("✅ Evet, Silmeyi Onayla", type="primary", use_container_width=True):
+            if st.button("✅ Evet, Sil", type="primary", use_container_width=True):
                 edited_df.to_csv(DB_FILE, index=False)
-                st.success("Veriler başarıyla silindi!")
+                st.success("Silindi!")
                 st.rerun()
         with col_onay2:
-            if st.button("❌ Hayır, İptal Et", type="secondary", use_container_width=True):
-                st.info("Değişiklikler iptal edildi.")
+            if st.button("❌ Hayır, Geri Al", type="secondary", use_container_width=True):
+                # Editörü sıfırlamak için key değerini değiştiriyoruz
+                st.session_state.editor_key += 1
                 st.rerun()
 
 else:
