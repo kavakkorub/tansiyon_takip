@@ -12,10 +12,8 @@ from email import encoders
 # --- KONFİGÜRASYON ---
 st.set_page_config(page_title="Tansiyon Takip", layout="centered", page_icon="🩺")
 
-# Veritabanı Dosyası (Tek dosya, şifresiz)
 DB_FILE = "tansiyon_verileri.csv"
 
-# Fonksiyonlar
 def verileri_yukle():
     if os.path.exists(DB_FILE):
         return pd.read_csv(DB_FILE)
@@ -49,7 +47,7 @@ def mail_gonder(dosya_yolu):
 # --- ANA ARAYÜZ ---
 st.title("🩺 Tansiyon Takip Sistemi")
 
-# 1. YENİ KAYIT EKLEME
+# 1. YENİ KAYIT EKLEME (2 Haneli Değerler)
 with st.container(border=True):
     st.subheader("➕ Yeni Ölçüm Ekle")
     col1, col2 = st.columns(2)
@@ -57,8 +55,9 @@ with st.container(border=True):
     with col2: vakit_giris = st.selectbox("Vakit", ["Sabah", "Akşam"])
     
     c1, c2, c3 = st.columns(3)
-    with c1: sistolik = st.number_input("Büyük (Sistolik)", 70, 220, 120)
-    with c2: diyastolik = st.number_input("Küçük (Diyastolik)", 40, 140, 80)
+    # Değerleri 12.0 - 8.0 gibi girmek için sınırları güncelledik
+    with c1: sistolik = st.number_input("Büyük (Örn: 12)", 7, 22, 12)
+    with c2: diyastolik = st.number_input("Küçük (Örn: 8)", 4, 14, 8)
     with c3: nabiz = st.number_input("Nabız", 40, 200, 70)
     
     if st.button("KAYDET", use_container_width=True, type="primary"):
@@ -67,15 +66,16 @@ with st.container(border=True):
                                  columns=["Tarih", "Vakit", "Sistolik", "Diyastolik", "Nabiz"])
         df_mevcut = verileri_yukle()
         pd.concat([df_mevcut, yeni_veri], ignore_index=True).to_csv(DB_FILE, index=False)
-        st.success("Başarıyla kaydedildi!")
+        st.success(f"Kaydedildi: {sistolik}/{diyastolik} - {nabiz}")
         st.rerun()
 
-# 2. VERİ ANALİZİ VE LİSTELEME
+# 2. VERİ ANALİZİ
 df = verileri_yukle()
 
 if not df.empty:
     st.divider()
     st.subheader("📈 Değişim Grafiği")
+    # Grafik eksenleri artık 12, 13 gibi daha sade görünecek
     fig = px.line(df, x="Tarih", y=["Sistolik", "Diyastolik"], 
                   markers=True, color_discrete_sequence=["#FF4B4B", "#0068C9"])
     st.plotly_chart(fig, use_container_width=True)
@@ -91,7 +91,7 @@ if not df.empty:
 
     st.divider()
     
-    # 3. KAYIT YÖNETİMİ (Kutucuklu Silme & Onay)
+    # 3. KAYIT YÖNETİMİ
     st.subheader("📋 Kayıt Yönetimi")
     
     if "editor_key" not in st.session_state:
@@ -105,22 +105,21 @@ if not df.empty:
         column_config={
             "Tarih": st.column_config.TextColumn("Tarih", disabled=True),
             "Vakit": st.column_config.TextColumn("Vakit", disabled=True),
+            "Sistolik": st.column_config.NumberColumn("Büyük", min_value=7, max_value=22),
+            "Diyastolik": st.column_config.NumberColumn("Küçük", min_value=4, max_value=14),
         }
     )
 
-    # Eğer satır silindiyse onay iste
     if len(edited_df) != len(df):
-        st.warning("⚠️ Bazı kayıtları sildiniz. Kalıcı olarak kaydetmek istiyor musunuz?")
-        
+        st.warning("⚠️ Bazı kayıtları sildiniz. Onaylıyor musunuz?")
         c_onay1, c_onay2 = st.columns(2)
         with c_onay1:
             if st.button("✅ Evet, Sil", type="primary", use_container_width=True):
                 edited_df.to_csv(DB_FILE, index=False)
-                st.success("Değişiklikler kaydedildi!")
                 st.rerun()
         with c_onay2:
             if st.button("❌ Hayır, Geri Al", type="secondary", use_container_width=True):
                 st.session_state.editor_key += 1
                 st.rerun()
 else:
-    st.info("Henüz veri girişi yapılmamış. İlk ölçümünüzü yukarıdan ekleyebilirsiniz.")
+    st.info("Henüz veri yok.")
