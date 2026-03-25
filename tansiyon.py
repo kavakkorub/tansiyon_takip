@@ -26,9 +26,7 @@ DB_FILE = "tansiyon_verileri.csv"
 
 def verileri_yukle():
     if os.path.exists(DB_FILE):
-        df = pd.read_csv(DB_FILE)
-        # Karışıklığı önlemek için her satıra gizli bir ID (index) gibi davranacağız
-        return df
+        return pd.read_csv(DB_FILE)
     return pd.DataFrame(columns=["Tarih", "Vakit", "Sistolik", "Diyastolik", "Nabiz"])
 
 def mail_gonder(dosya_yolu):
@@ -96,7 +94,7 @@ if not df.empty:
     except:
         st.info("Grafik güncelleniyor...")
 
-    # İşlem Butonları (Rapor ve Excel)
+    # İşlem Butonları
     col_a, col_b = st.columns(2)
     with col_a:
         if st.button("📧 Raporu Mail At", use_container_width=True):
@@ -108,28 +106,27 @@ if not df.empty:
 
     st.divider()
 
-    # 3. GELİŞMİŞ SİLME BÖLÜMÜ
-    with st.expander("🗑️ Kayıtları Düzenle / Sil"):
-        st.write("Silmek istediğiniz kayıtları seçin:")
-        # Seçim yapabilmek için her satırı bir metin olarak gösterelim
-        df_secim = df.copy()
-        df_secim['secim_metni'] = df_secim['Tarih'] + " - " + df_secim['Vakit'] + " (" + df_secim['Sistolik'].astype(str) + "/" + df_secim['Diyastolik'].astype(str) + ")"
-        
-        silinecekler = st.multiselect("Kayıt Seçin", options=df_secim['secim_metni'].tolist())
-        
-        if st.button("SEÇİLENLERİ SİL", type="secondary", use_container_width=True):
-            if silinecekler:
-                # Seçilmeyenleri tutarak listeyi güncelle
-                df = df_secim[~df_secim['secim_metni'].isin(silinecekler)]
-                df = df.drop(columns=['secim_metni']) # Geçici sütunu sil
-                df.to_csv(DB_FILE, index=False)
-                st.warning(f"{len(silinecekler)} kayıt silindi!")
-                st.rerun()
-            else:
-                st.info("Lütfen önce silinecek bir kayıt seçin.")
+    # 3. ETKİLEŞİMLİ SİLME VE TABLO ALANI
+    st.subheader("📋 Kayıt Yönetimi")
+    st.info("Silmek istediğiniz satırın yanındaki kutucuğu işaretleyip klavyeden 'Delete' tuşuna basabilir veya aşağıdaki butonu kullanabilirsiniz.")
 
-    # Geçmiş Tablo
-    st.subheader("📋 Geçmiş Ölçümler")
-    st.dataframe(df.sort_values(by="Tarih", ascending=False), use_container_width=True)
+    # Veriyi düzenlenebilir tablo olarak gösteriyoruz
+    # num_rows="dynamic" satır silmeye izin verir
+    edited_df = st.data_editor(
+        df, 
+        use_container_width=True, 
+        num_rows="dynamic",
+        column_config={
+            "Tarih": st.column_config.TextColumn("Tarih", disabled=True),
+            "Vakit": st.column_config.TextColumn("Vakit", disabled=True),
+        }
+    )
+
+    # Eğer tablodaki veri değiştiyse (satır silindiyse) dosyayı güncelle
+    if len(edited_df) != len(df):
+        edited_df.to_csv(DB_FILE, index=False)
+        st.warning("Değişiklikler kaydedildi!")
+        st.rerun()
+
 else:
     st.info("Henüz veri girişi yapılmamış.")
