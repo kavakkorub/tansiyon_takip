@@ -106,12 +106,11 @@ if not df.empty:
 
     st.divider()
 
-    # 3. ETKİLEŞİMLİ SİLME VE TABLO ALANI
+    # 3. ONAY MEKANİZMALI TABLO ALANI
     st.subheader("📋 Kayıt Yönetimi")
-    st.info("Silmek istediğiniz satırın yanındaki kutucuğu işaretleyip klavyeden 'Delete' tuşuna basabilir veya aşağıdaki butonu kullanabilirsiniz.")
-
-    # Veriyi düzenlenebilir tablo olarak gösteriyoruz
-    # num_rows="dynamic" satır silmeye izin verir
+    
+    # Düzenlenebilir tabloyu gösteriyoruz
+    # num_rows="dynamic" ile satır seçip silmeye izin veriyoruz
     edited_df = st.data_editor(
         df, 
         use_container_width=True, 
@@ -122,11 +121,20 @@ if not df.empty:
         }
     )
 
-    # Eğer tablodaki veri değiştiyse (satır silindiyse) dosyayı güncelle
+    # Eğer tablodaki veri değiştiyse (satır silindiyse) onay iste
     if len(edited_df) != len(df):
-        edited_df.to_csv(DB_FILE, index=False)
-        st.warning("Değişiklikler kaydedildi!")
-        st.rerun()
+        st.warning("⚠️ Bir veya daha fazla satır sildiniz. Değişiklikleri kalıcı olarak kaydetmek istiyor musunuz?")
+        
+        col_onay1, col_onay2 = st.columns(2)
+        with col_onay1:
+            if st.button("✅ Evet, Silmeyi Onayla", type="primary", use_container_width=True):
+                edited_df.to_csv(DB_FILE, index=False)
+                st.success("Veriler başarıyla silindi!")
+                st.rerun()
+        with col_onay2:
+            if st.button("❌ Hayır, İptal Et", type="secondary", use_container_width=True):
+                st.info("Değişiklikler iptal edildi.")
+                st.rerun()
 
 else:
     st.info("Henüz veri girişi yapılmamış.")
