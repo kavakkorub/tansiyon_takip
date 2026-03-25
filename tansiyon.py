@@ -11,20 +11,20 @@ from email.mime.base import MIMEBase
 from email import encoders
 
 # --- 1. GÜVENLİ KULLANICI DOĞRULAMA ---
-# Secrets kontrolü ekleyerek hatayı engelleyelim
 if "credentials" in st.secrets:
+    # BU KISIM ÖNEMLİ: Secrets verisini standart Python sözlüğüne (dict) zorluyoruz.
+    # Yeni versiyonlarda AttrDict hatası almamak için bu yöntem en güvenlisidir.
+    creds = dict(st.secrets["credentials"]) 
+    
     authenticator = stauth.Authenticate(
-        st.secrets["credentials"],
+        creds,
         st.secrets["auth"]["cookie_name"],
         st.secrets["auth"]["key"],
-        st.secrets["auth"]["expiry_days"]
+        int(st.secrets["auth"]["expiry_days"]) # Sayı olduğundan emin oluyoruz
     )
 else:
     st.error("Hata: Secrets panelinde 'credentials' bulunamadı!")
     st.stop()
-
-# Giriş ekranı
-authenticator.login(location='main')
 
 # --- 2. GİRİŞ KONTROLÜ VE UYGULAMA AKIŞI ---
 if st.session_state["authentication_status"] == False:
