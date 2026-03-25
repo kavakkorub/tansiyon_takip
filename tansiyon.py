@@ -12,27 +12,25 @@ from email import encoders
 
 # --- 1. GÜVENLİ KULLANICI DOĞRULAMA ---
 try:
-    # Secrets içindeki AttrDict yapısını standart Python sözlüğüne (dict) çeviriyoruz.
-    # Bu işlem KeyError ve TypeError hatalarını kökten çözer.
-    raw_creds = st.secrets["credentials"]
-    credentials = {
+    # Secrets'tan gelen veriyi saf bir sözlüğe (dict) dönüştürüyoruz
+    creds = {
         "usernames": {
-            user: dict(data) for user, data in raw_creds["usernames"].items()
+            k: {"name": v["name"], "password": v["password"]} 
+            for k, v in st.secrets["credentials"]["usernames"].items()
         }
     }
 
     authenticator = stauth.Authenticate(
-        credentials,
+        creds,
         st.secrets["auth"]["cookie_name"],
         st.secrets["auth"]["key"],
-        int(st.secrets["auth"]["expiry_days"])
+        cookie_expiry_days=int(st.secrets["auth"]["expiry_days"])
     )
 except Exception as e:
-    st.error(f"⚠️ Ayar Hatası: {e}")
-    st.info("Lütfen Streamlit Cloud 'Secrets' panelindeki formatın doğruluğunu kontrol edin.")
+    st.error(f"Giriş Sistemi Hatası: {e}")
     st.stop()
 
-# Giriş ekranı
+# Giriş kutusunu göster
 authenticator.login(location='main')
 
 # --- 2. GİRİŞ KONTROLÜ VE UYGULAMA AKIŞI ---
