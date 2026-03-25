@@ -26,7 +26,9 @@ DB_FILE = "tansiyon_verileri.csv"
 
 def verileri_yukle():
     if os.path.exists(DB_FILE):
-        return pd.read_csv(DB_FILE)
+        df = pd.read_csv(DB_FILE)
+        # Karışıklığı önlemek için her satıra gizli bir ID (index) gibi davranacağız
+        return df
     return pd.DataFrame(columns=["Tarih", "Vakit", "Sistolik", "Diyastolik", "Nabiz"])
 
 def mail_gonder(dosya_yolu):
@@ -94,8 +96,8 @@ if not df.empty:
     except:
         st.info("Grafik güncelleniyor...")
 
-    # İşlem Butonları
-    col_a, col_b, col_c = st.columns(3)
+    # İşlem Butonları (Rapor ve Excel)
+    col_a, col_b = st.columns(2)
     with col_a:
         if st.button("📧 Raporu Mail At", use_container_width=True):
             with st.spinner("Gönderiliyor..."):
@@ -103,13 +105,28 @@ if not df.empty:
     with col_b:
         csv = df.to_csv(index=False).encode('utf-8')
         st.download_button("📥 Excel İndir", data=csv, file_name="tansiyon_yedek.csv", use_container_width=True)
-    with col_c:
-        # SİLME BUTONU
-        if st.button("🗑️ Son Kaydı Sil", use_container_width=True, help="En son eklenen satırı siler"):
-            df = df[:-1] # Son satırı çıkar
-            df.to_csv(DB_FILE, index=False)
-            st.warning("Son kayıt silindi!")
-            st.rerun()
+
+    st.divider()
+
+    # 3. GELİŞMİŞ SİLME BÖLÜMÜ
+    with st.expander("🗑️ Kayıtları Düzenle / Sil"):
+        st.write("Silmek istediğiniz kayıtları seçin:")
+        # Seçim yapabilmek için her satırı bir metin olarak gösterelim
+        df_secim = df.copy()
+        df_secim['secim_metni'] = df_secim['Tarih'] + " - " + df_secim['Vakit'] + " (" + df_secim['Sistolik'].astype(str) + "/" + df_secim['Diyastolik'].astype(str) + ")"
+        
+        silinecekler = st.multiselect("Kayıt Seçin", options=df_secim['secim_metni'].tolist())
+        
+        if st.button("SEÇİLENLERİ SİL", type="secondary", use_container_width=True):
+            if silinecekler:
+                # Seçilmeyenleri tutarak listeyi güncelle
+                df = df_secim[~df_secim['secim_metni'].isin(silinecekler)]
+                df = df.drop(columns=['secim_metni']) # Geçici sütunu sil
+                df.to_csv(DB_FILE, index=False)
+                st.warning(f"{len(silinecekler)} kayıt silindi!")
+                st.rerun()
+            else:
+                st.info("Lütfen önce silinecek bir kayıt seçin.")
 
     # Geçmiş Tablo
     st.subheader("📋 Geçmiş Ölçümler")
