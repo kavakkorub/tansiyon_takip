@@ -7,7 +7,6 @@ import os
 # --- KONFİGÜRASYON ---
 st.set_page_config(page_title="Tansiyon Takip", layout="centered", page_icon="🩺")
 
-# Dosya adı (Verilerin saklandığı yer)
 DB_FILE = "tansiyon_verileri.csv"
 
 def verileri_yukle():
@@ -22,11 +21,12 @@ st.title("🩺 Tansiyon Takip Sistemi")
 with st.container(border=True):
     st.subheader("➕ Yeni Ölçüm")
     
-    # Tarih ve Vakit seçimi geri geldi
     col_tarih, col_vakit = st.columns(2)
     with col_tarih: 
         tarih_giris = st.date_input("Tarih Seçin", datetime.now())
+    
     with col_vakit: 
+        # Liste başında "Sabah" olduğu için her yenilemede "Sabah" seçili gelecek
         vakit_giris = st.selectbox("Vakit", ["Sabah", "Akşam"])
     
     c1, c2 = st.columns(2)
@@ -34,7 +34,6 @@ with st.container(border=True):
     with c2: diyastolik = st.number_input("Küçük", 4, 14, 8)
     
     if st.button("KAYDET", use_container_width=True, type="primary"):
-        # Seçilen tarih ve o anki saati birleştiriyoruz
         zaman_obj = datetime.combine(tarih_giris, datetime.now().time())
         zaman_str = zaman_obj.strftime("%Y-%m-%d %H:%M")
         
@@ -43,7 +42,9 @@ with st.container(border=True):
         
         df_mevcut = verileri_yukle()
         pd.concat([df_mevcut, yeni_veri], ignore_index=True).to_csv(DB_FILE, index=False)
+        
         st.success(f"Kaydedildi: {sistolik}/{diyastolik}")
+        # Sayfayı yeniden çalıştırarak tüm inputları (Vakit dahil) başlangıç değerine döndürüyoruz
         st.rerun()
 
 # 2. VERİ LİSTESİ VE DÜZENLEME
@@ -52,26 +53,23 @@ df = verileri_yukle()
 if not df.empty:
     st.divider()
     st.subheader("📋 Kayıt Yönetimi")
-    st.info("💡 Değerleri hücrelere tıklayarak düzeltebilir, satırları seçip 'Delete' ile silebilirsiniz.")
     
     if "editor_key" not in st.session_state:
         st.session_state.editor_key = 0
 
-    # Düzenlenebilir Tablo
     edited_df = st.data_editor(
         df, 
         use_container_width=True, 
         num_rows="dynamic",
         key=f"ed_{st.session_state.editor_key}",
         column_config={
-            "Tarih": st.column_config.TextColumn("Tarih", disabled=False), # İstersen tarihi de elle düzeltebilirsin
+            "Tarih": st.column_config.TextColumn("Tarih"), 
             "Vakit": st.column_config.SelectboxColumn("Vakit", options=["Sabah", "Akşam"]),
             "Sistolik": st.column_config.NumberColumn("Büyük", min_value=7, max_value=22),
             "Diyastolik": st.column_config.NumberColumn("Küçük", min_value=4, max_value=14),
         }
     )
 
-    # Herhangi bir değişiklik (silme veya düzeltme) kontrolü
     if not edited_df.equals(df):
         st.warning("⚠️ Değişiklikleri onaylıyor musunuz?")
         c1, c2 = st.columns(2)
@@ -87,12 +85,9 @@ if not df.empty:
     # 3. ANALİZ VE YEDEKLEME
     st.divider()
     st.subheader("📈 Analiz ve Yedekleme")
-    
-    # Grafik
     fig = px.line(df, x="Tarih", y=["Sistolik", "Diyastolik"], markers=True)
     st.plotly_chart(fig, use_container_width=True)
     
-    # Veri Kaybını Önlemek İçin İndirme Butonu
     csv_dosya = df.to_csv(index=False).encode('utf-8')
     st.download_button(
         label="📥 Verileri Bilgisayara Yedekle (CSV)",
