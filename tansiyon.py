@@ -10,17 +10,14 @@ from email.mime.base import MIMEBase
 from email import encoders
 
 # --- KONFİGÜRASYON ---
-st.set_page_config(page_title="Tansiyon Takip v2", layout="centered", page_icon="🩺")
+st.set_page_config(page_title="Tansiyon Takip", layout="centered", page_icon="🩺")
 
-# Streamlit Secrets üzerinden güvenli giriş (Canlıda çalışması için)
-# Yerelde çalışırken hata almamak için kontrol ekliyoruz
+# Streamlit Secrets (GitHub'da canlıya aldığınızda Settings > Secrets kısmına eklemeyi unutmayın)
 try:
     GONDEREN_EMAIL = st.secrets["email_ayarlari"]["gonderen"]
     ALICI_EMAIL = st.secrets["email_ayarlari"]["alici"]
     EP_SIFRE = st.secrets["email_ayarlari"]["sifre"]
 except:
-    # Yerelde test ederken buraya kendi bilgilerinizi geçici yazabilirsiniz
-    # AMA GITHUB'A YÜKLERKEN BOŞ BIRAKIN VEYA SECRETS KULLANIN
     GONDEREN_EMAIL = "ornek@gmail.com"
     ALICI_EMAIL = "doktor@gmail.com"
     EP_SIFRE = "uygulama_sifresi"
@@ -33,17 +30,14 @@ def mail_gonder(dosya_yolu):
         msg['From'] = GONDEREN_EMAIL
         msg['To'] = ALICI_EMAIL
         msg['Subject'] = f"Tansiyon Raporu - {datetime.now().strftime('%d/%m/%Y')}"
-
-        body = f"Merhaba,\n\n{datetime.now().strftime('%d/%m/%Y')} tarihli güncel tansiyon kayıtları ekte sunulmuştur."
+        body = f"Merhaba,\n\n{datetime.now().strftime('%d/%m/%Y')} tarihli güncel tansiyon kayıtları ektedir."
         msg.attach(MIMEText(body, 'plain'))
-
         with open(dosya_yolu, "rb") as attachment:
             part = MIMEBase('application', 'octet-stream')
             part.set_payload(attachment.read())
             encoders.encode_base64(part)
             part.add_header('Content-Disposition', f"attachment; filename= {dosya_yolu}")
             msg.attach(part)
-
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(GONDEREN_EMAIL, EP_SIFRE)
@@ -59,54 +53,67 @@ def verileri_yukle():
         return pd.read_csv(DB_FILE)
     return pd.DataFrame(columns=["Tarih", "Vakit", "Sistolik", "Diyastolik", "Nabiz"])
 
-# --- ARAYÜZ ---
+# --- ANA ARAYÜZ ---
 st.title("🩺 Tansiyon Takip Sistemi")
 
-# Veri Girişi (Sidebar)
-with st.sidebar:
-    st.header("➕ Yeni Kayıt")
-    vakit = st.selectbox("Vakit", ["Sabah", "Akşam"])
-    sistolik = st.number_input("Büyük (Sistolik)", 70, 220, 120)
-    diyastolik = st.number_input("Küçük (Diyastolik)", 40, 140, 80)
-    nabiz = st.number_input("Nabız", 40, 200, 70)
+# 1. VERİ GİRİŞ BÖLÜMÜ (Artık ana sayfada)
+with st.container(border=True):
+    st.subheader("➕ Yeni Ölçüm Ekle")
     
-    if st.button("Veriyi Kaydet"):
-        yeni_veri = pd.DataFrame([[datetime.now().strftime("%Y-%m-%d %H:%M"), vakit, sistolik, diyastolik, nabiz]], 
+    col1, col2 = st.columns(2)
+    with col1:
+        tarih_giris = st.date_input("Ölçüm Tarihi", datetime.now())
+    with col2:
+        vakit_giris = st.selectbox("Vakit", ["Sabah", "Akşam"])
+    
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        sistolik = st.number_input("Büyük", 70, 220, 120)
+    with c2:
+        diyastolik = st.number_input("Küçük", 40, 140, 80)
+    with c3:
+        nabiz = st.number_input("Nabız", 40, 200, 70)
+    
+    if st.button("KAYDET", use_container_width=True, type="primary"):
+        # Tarihi ve saati birleştiriyoruz
+        zaman_damgasi = datetime.combine(tarih_giris, datetime.now().time()).strftime("%Y-%m-%d %H:%M")
+        yeni_veri = pd.DataFrame([[zaman_damgasi, vakit_giris, sistolik, diyastolik, nabiz]], 
                                  columns=["Tarih", "Vakit", "Sistolik", "Diyastolik", "Nabiz"])
-        df = verileri_yukle()
-        df = pd.concat([df, yeni_veri], ignore_index=True)
-        df.to_csv(DB_FILE, index=False)
-        st.success("Başarıyla kaydedildi!")
+        df_mevcut = verileri_yukle()
+        df_yeni = pd.concat([df_mevcut, yeni_veri], ignore_index=True)
+        df_yeni.to_csv(DB_FILE, index=False)
+        st.success("Kayıt başarıyla eklendi!")
         st.rerun()
 
-# Ana Sayfa İçeriği
+# 2. VERİ ANALİZİ VE LİSTELEME
 df = verileri_yukle()
 
 if not df.empty:
-    # Grafik Alanı
-    st.subheader("📊 Tansiyon Analiz Grafiği")
-    fig = px.line(df, x="Tarih", y=["Sistolik", "Diyastolik"], 
-                  labels={"value": "Değer", "variable": "Ölçüm"},
-                  markers=True, color_discrete_sequence=["#FF4B4B", "#0068C9"])
-    st.plotly_chart(fig, use_container_width=True)
+    st.divider()
+    
+    # Grafik
+    st.subheader("📈 Değişim Grafiği")
+    try:
+        fig = px.line(df, x="Tarih", y=["Sistolik", "Diyastolik"], 
+                      labels={"value": "Değer", "variable": "Ölçüm"},
+                      markers=True, color_discrete_sequence=["#FF4B4B", "#0068C9"])
+        st.plotly_chart(fig, use_container_width=True)
+    except:
+        st.info("Grafik için daha fazla veriye ihtiyaç var.")
 
     # İşlem Butonları
-    st.divider()
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("📧 Raporu Mail At"):
+    col_a, col_b = st.columns(2)
+    with col_a:
+        if st.button("📧 Raporu Mail At", use_container_width=True):
             with st.spinner("Gönderiliyor..."):
                 if mail_gonder(DB_FILE):
-                    st.success("Mail başarıyla gönderildi!")
-    
-    with col2:
-        # Manuel yedek alma butonu
+                    st.success("Mail iletildi!")
+    with col_b:
         csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("📥 Excel Olarak İndir", data=csv, file_name="tansiyon_yedek.csv", mime="text/csv")
+        st.download_button("📥 Excel İndir", data=csv, file_name="tansiyon_kayitlari.csv", use_container_width=True)
 
-    # Liste
-    st.subheader("📋 Geçmiş Kayıtlar")
+    # Geçmiş Tablo
+    st.subheader("📋 Geçmiş Ölçümler")
     st.dataframe(df.sort_values(by="Tarih", ascending=False), use_container_width=True)
 else:
-    st.info("Henüz veri bulunmuyor. Sol menüden ilk kaydınızı girebilirsiniz.")
+    st.info("Henüz veri girişi yapılmamış. Yukarıdaki formdan ilk ölçümü ekleyebilirsiniz.")
