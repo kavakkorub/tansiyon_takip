@@ -1,3 +1,6 @@
+import streamlit_authenticator as stauth
+# Sadece bir kereye mahsus şifre kodu üretmek için:
+print("Şifre Kodunuz:", stauth.Hasher(['12345']).generate())
 import streamlit as st
 import streamlit_authenticator as stauth
 import pandas as pd
