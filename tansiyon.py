@@ -17,7 +17,8 @@ DB_FILE = "tansiyon_verileri.csv"
 def verileri_yukle():
     if os.path.exists(DB_FILE):
         return pd.read_csv(DB_FILE)
-    return pd.DataFrame(columns=["Tarih", "Vakit", "Sistolik", "Diyastolik", "Nabiz"])
+    # Sadece Tarih, Vakit, Sistolik ve Diyastolik sütunları
+    return pd.DataFrame(columns=["Tarih", "Vakit", "Sistolik", "Diyastolik"])
 
 def mail_gonder(dosya_yolu):
     try:
@@ -26,7 +27,7 @@ def mail_gonder(dosya_yolu):
         msg['From'] = email_konf.get("gonderen", "")
         msg['To'] = email_konf.get("alici", "")
         msg['Subject'] = f"Tansiyon Raporu - {datetime.now().strftime('%d/%m/%Y')}"
-        body = "Güncel tansiyon kayıtları ektedir."
+        body = "Güncel tansiyon kayıtları (Büyük/Küçük) ektedir."
         msg.attach(MIMEText(body, 'plain'))
         with open(dosya_yolu, "rb") as attachment:
             part = MIMEBase('application', 'octet-stream')
@@ -45,54 +46,52 @@ def mail_gonder(dosya_yolu):
         return False
 
 # --- ANA ARAYÜZ ---
-st.title("🩺 Tansiyon Takip Sistemi")
+st.title("🩺 Sade Tansiyon Takip")
 
-# 1. YENİ KAYIT EKLEME (2 Haneli Değerler)
+# 1. YENİ KAYIT EKLEME (Nabızsız)
 with st.container(border=True):
-    st.subheader("➕ Yeni Ölçüm Ekle")
+    st.subheader("➕ Yeni Ölçüm")
     col1, col2 = st.columns(2)
     with col1: tarih_giris = st.date_input("Tarih", datetime.now())
     with col2: vakit_giris = st.selectbox("Vakit", ["Sabah", "Akşam"])
     
-    c1, c2, c3 = st.columns(3)
-    # Değerleri 12.0 - 8.0 gibi girmek için sınırları güncelledik
-    with c1: sistolik = st.number_input("Büyük (Örn: 12)", 7, 22, 12)
-    with c2: diyastolik = st.number_input("Küçük (Örn: 8)", 4, 14, 8)
-    with c3: nabiz = st.number_input("Nabız", 40, 200, 70)
+    # Nabız sütununu sildik, sadece 2 sütun kaldı
+    c1, c2 = st.columns(2)
+    with c1: sistolik = st.number_input("Büyük (Sistolik)", 7, 22, 12)
+    with c2: diyastolik = st.number_input("Küçük (Diyastolik)", 4, 14, 8)
     
     if st.button("KAYDET", use_container_width=True, type="primary"):
         zaman = datetime.combine(tarih_giris, datetime.now().time()).strftime("%Y-%m-%d %H:%M")
-        yeni_veri = pd.DataFrame([[zaman, vakit_giris, sistolik, diyastolik, nabiz]], 
-                                 columns=["Tarih", "Vakit", "Sistolik", "Diyastolik", "Nabiz"])
+        yeni_veri = pd.DataFrame([[zaman, vakit_giris, sistolik, diyastolik]], 
+                                 columns=["Tarih", "Vakit", "Sistolik", "Diyastolik"])
         df_mevcut = verileri_yukle()
         pd.concat([df_mevcut, yeni_veri], ignore_index=True).to_csv(DB_FILE, index=False)
-        st.success(f"Kaydedildi: {sistolik}/{diyastolik} - {nabiz}")
+        st.success(f"Başarıyla kaydedildi: {sistolik}/{diyastolik}")
         st.rerun()
 
-# 2. VERİ ANALİZİ
+# 2. ANALİZ
 df = verileri_yukle()
 
 if not df.empty:
     st.divider()
-    st.subheader("📈 Değişim Grafiği")
-    # Grafik eksenleri artık 12, 13 gibi daha sade görünecek
+    st.subheader("📈 Analiz Grafiği")
     fig = px.line(df, x="Tarih", y=["Sistolik", "Diyastolik"], 
-                  markers=True, color_discrete_sequence=["#FF4B4B", "#0068C9"])
+                  markers=True, color_discrete_sequence=["#FF4B4B", "#0068C9"],
+                  labels={"value": "Değer", "variable": "Ölçüm"})
     st.plotly_chart(fig, use_container_width=True)
 
     col_a, col_b = st.columns(2)
     with col_a:
-        if st.button("📧 Raporu Mail At", use_container_width=True):
-            with st.spinner("Gönderiliyor..."):
-                if mail_gonder(DB_FILE): st.success("Mail gönderildi!")
+        if st.button("📧 Rapor Gönder", use_container_width=True):
+            if mail_gonder(DB_FILE): st.success("E-posta iletildi!")
     with col_b:
-        st.download_button("📥 Excel İndir", data=df.to_csv(index=False).encode('utf-8'), 
-                           file_name="tansiyon_yedek.csv", use_container_width=True)
+        st.download_button("📥 Excel Olarak Al", data=df.to_csv(index=False).encode('utf-8'), 
+                           file_name="tansiyon_rapor.csv", use_container_width=True)
 
     st.divider()
     
-    # 3. KAYIT YÖNETİMİ
-    st.subheader("📋 Kayıt Yönetimi")
+    # 3. YÖNETİM
+    st.subheader("📋 Kayıtlar")
     
     if "editor_key" not in st.session_state:
         st.session_state.editor_key = 0
@@ -111,14 +110,14 @@ if not df.empty:
     )
 
     if len(edited_df) != len(df):
-        st.warning("⚠️ Bazı kayıtları sildiniz. Onaylıyor musunuz?")
-        c_onay1, c_onay2 = st.columns(2)
-        with c_onay1:
-            if st.button("✅ Evet, Sil", type="primary", use_container_width=True):
+        st.warning("⚠️ Değişiklik yapıldı. Kaydetmek istiyor musunuz?")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("✅ Onayla", type="primary", use_container_width=True):
                 edited_df.to_csv(DB_FILE, index=False)
                 st.rerun()
-        with c_onay2:
-            if st.button("❌ Hayır, Geri Al", type="secondary", use_container_width=True):
+        with c2:
+            if st.button("❌ Vazgeç", use_container_width=True):
                 st.session_state.editor_key += 1
                 st.rerun()
 else:
