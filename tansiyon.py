@@ -11,20 +11,29 @@ from email.mime.base import MIMEBase
 from email import encoders
 
 # --- 1. GÜVENLİ KULLANICI DOĞRULAMA ---
-if "credentials" in st.secrets:
-    # BU KISIM ÖNEMLİ: Secrets verisini standart Python sözlüğüne (dict) zorluyoruz.
-    # Yeni versiyonlarda AttrDict hatası almamak için bu yöntem en güvenlisidir.
-    creds = dict(st.secrets["credentials"]) 
-    
+try:
+    # Secrets içindeki AttrDict yapısını standart Python sözlüğüne (dict) çeviriyoruz.
+    # Bu işlem KeyError ve TypeError hatalarını kökten çözer.
+    raw_creds = st.secrets["credentials"]
+    credentials = {
+        "usernames": {
+            user: dict(data) for user, data in raw_creds["usernames"].items()
+        }
+    }
+
     authenticator = stauth.Authenticate(
-        creds,
+        credentials,
         st.secrets["auth"]["cookie_name"],
         st.secrets["auth"]["key"],
-        int(st.secrets["auth"]["expiry_days"]) # Sayı olduğundan emin oluyoruz
+        int(st.secrets["auth"]["expiry_days"])
     )
-else:
-    st.error("Hata: Secrets panelinde 'credentials' bulunamadı!")
+except Exception as e:
+    st.error(f"⚠️ Ayar Hatası: {e}")
+    st.info("Lütfen Streamlit Cloud 'Secrets' panelindeki formatın doğruluğunu kontrol edin.")
     st.stop()
+
+# Giriş ekranı
+authenticator.login(location='main')
 
 # --- 2. GİRİŞ KONTROLÜ VE UYGULAMA AKIŞI ---
 if st.session_state["authentication_status"] == False:
